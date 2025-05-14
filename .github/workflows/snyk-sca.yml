@@ -1,0 +1,42 @@
+name: SCA with Snyk for nodejs-goof
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  snyk-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Snyk to test for vulnerabilities
+        uses: snyk/actions@master
+        with:
+          command: test
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Generate and save Snyk JSON report
+        run: snyk test --json > snyk-report.json
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Upload Snyk report artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: snyk-report
+          path: snyk-report.json
