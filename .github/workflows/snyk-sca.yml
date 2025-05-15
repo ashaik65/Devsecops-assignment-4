@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run Snyk to test for vulnerabilities (console output only)
+      - name: Run Snyk to test for vulnerabilities (console output)
         uses: snyk/actions@master
         with:
           command: test
@@ -31,25 +31,31 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
 
-      - name: Install Snyk CLI
-        run: npm install -g snyk
+      - name: Install Snyk CLI and snyk-to-html
+        run: |
+          npm install -g snyk snyk-to-html
 
-      - name: Generate and save Snyk JSON report
+      - name: Generate Snyk HTML and JSON Reports
         run: |
           snyk test --json > snyk-report.json || true
+          snyk-to-html -i snyk-report.json -o snyk-report.html || true
 
-          if [ ! -s snyk-report.json ] || grep -q '"vulnerabilities":\s*\[\s*\]' snyk-report.json; then
-            echo "No vulnerabilities found or file is empty."
+          echo "Report files:"
+          ls -lh snyk-report.*
+          
+          if [ -s snyk-report.html ]; then
+            echo "✅ HTML report generated"
           else
-            echo "Snyk report generated with vulnerabilities:"
-            cat snyk-report.json
+            echo "❌ HTML report was not generated correctly"
           fi
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
 
-      - name: Upload Snyk report artifact
+      - name: Upload Snyk reports
         uses: actions/upload-artifact@v4
         with:
-          name: snyk-report
-          path: snyk-report.json
+          name: snyk-reports
+          path: |
+            snyk-report.json
+            snyk-report.html
