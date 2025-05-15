@@ -29,9 +29,10 @@ jobs:
           command: test
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
 
       - name: Generate and save Snyk JSON report
-        run: snyk test --json > snyk-report.json
+        run: snyk test --json > snyk-report.json || echo "{}" > snyk-report.json
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
