@@ -31,11 +31,13 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
 
+      - name: Install Snyk CLI
+        run: npm install -g snyk
+
       - name: Generate and save Snyk JSON report
         run: |
           snyk test --json > snyk-report.json || true
 
-          # Check if report is not empty and has vulnerabilities
           if [ ! -s snyk-report.json ] || grep -q '"vulnerabilities":\s*\[\s*\]' snyk-report.json; then
             echo "No vulnerabilities found or file is empty."
           else
