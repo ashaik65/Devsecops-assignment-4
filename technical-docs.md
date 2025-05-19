@@ -36,10 +36,10 @@ We evaluated multiple tools from the assignment list:
 - On push to `main`  
 - On pull request to `main`
 
-### 🔧 Workflow Configuration (Snyk Integration)
+### 🔧 Workflow Configuration (Snyk + SBOM Integration)
 
 ```yaml
-name: SCA with Snyk for nodejs-goof
+name: SCA with Snyk + SBOM for nodejs-goof
 
 on:
   push:
@@ -47,7 +47,7 @@ on:
   pull_request:
 
 jobs:
-  snyk-scan:
+  sca-scan:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -64,35 +64,69 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install Snyk CLI
-        run: npm install -g snyk
+      - name: Run Snyk test (console output)
+        uses: snyk/actions@master
+        with:
+          command: test
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
 
-      - name: Run Snyk test & Generate Reports
+      - name: Install Snyk CLI and snyk-to-html
+        run: |
+          npm install -g snyk snyk-to-html
+
+      - name: Generate Snyk HTML and JSON Reports
         run: |
           snyk test --json > snyk-report.json || true
-          snyk test --json-file-output=snyk-report.html --report || true
+          snyk-to-html -i snyk-report.json -o snyk-report.html || true
 
-          if [ ! -s snyk-report.json ] || grep -q '"vulnerabilities":\s*\[\s*\]' snyk-report.json; then
-            echo "No vulnerabilities found or file is empty."
+          echo "Report files:"
+          ls -lh snyk-report.*
+
+          if [ -s snyk-report.html ]; then
+            echo "✅ HTML report generated"
           else
-            echo "Snyk report generated with vulnerabilities:"
-            cat snyk-report.json
+            echo "❌ HTML report was not generated correctly"
           fi
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
 
-      - name: Upload Snyk report artifacts
+      - name: Monitor project with Snyk
+        run: snyk monitor || true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+      - name: Upload Snyk reports
         uses: actions/upload-artifact@v4
         with:
           name: snyk-reports
           path: |
             snyk-report.json
             snyk-report.html
+
+      # --- SBOM Generation and Scan using Docker ---
+
+      - name: Generate SBOM using Syft (CycloneDX JSON)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/project anchore/syft:latest /project -o cyclonedx-json > sbom.json || true
+
+      - name: Scan SBOM with Grype
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/project anchore/grype sbom:/project/sbom.json -o table || true
+
+      - name: Upload SBOM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-json
+          path: sbom.json
+
 ```
 
 ## A: Successful GitHub Actions Run (All Steps Visible)
 
-![alt text](synk-pipeline.png)
+![alt text](<synk-job completion.png>)
 
 ## B: HTML Report Rendered View
 
@@ -100,7 +134,7 @@ jobs:
 
 ## C: Uploaded Artifacts Section in GitHub Actions
 
-![alt text](synk-artifact.png)
+![alt text](synk-artifacts.png)
 
 
 ## 4. Vulnerability Summary
@@ -139,7 +173,12 @@ Reports include package name, vulnerable versions, CVE ID, and recommended remed
 
 - Identifies risks before merge to `main`.
 - JSON + HTML reports enable both automation and manual review.
+- Snyk monitor enables historical vulnerability tracking.
+- SBOM generation supports SBOM-based security compliance (CycloneDX).
+- Dockerized tools reduce setup issues in CI.
 - Non-blocking pipeline — vulnerabilities don’t break builds.
+
+---
 
 ### 🧠 Challenges & Solutions
 
@@ -148,26 +187,28 @@ Reports include package name, vulnerable versions, CVE ID, and recommended remed
 | `snyk` command not found          | Installed globally using `npm install -g snyk`.           |
 | Artifact uploaded but empty       | Handled empty report with validation and `|| true`.       |
 | Pipeline failure due to vulnerabilities | Made Snyk scan non-failing for the assignment demo. |
+| Syft/Grype install errors         | Used Docker-based containers instead of manual binaries.  |
 
 ---
 
 ## 7. Conclusion
 
-SCA with Snyk in GitHub Actions is a reliable, fast, and scalable approach to:
+SCA with Snyk and SBOM-based scanning in GitHub Actions provides a robust, scalable solution to:
 
-- Keep open-source components secure.
-- Automate feedback and vulnerability tracking.
-- Provide audit-ready reports for security compliance.
+- Automate vulnerability identification and mitigation.
+- Maintain compliance with open-source usage policies.
+- Build security into CI/CD without slowing teams down.
 
-🚀 This SCA implementation ensures that teams catch dependency risks before production, enhancing security posture.
+🚀 This implementation enables secure-by-default development workflows and delivers artifact-based evidence for audit and reporting.
 
 ---
 
 ## 🗂️ Additional Files
 
-| File Name                         | Description                   |
-|----------------------------------|-------------------------------|
-| `.github/workflows/sca-snyk.yml` | CI pipeline config            |
-| `snyk-report.json`               | JSON vulnerability report     |
-| `snyk-report.html`               | HTML vulnerability summary    |
-| `README.md`                      | Instructions and explanation  |
+| File Name                         | Description                              |
+|----------------------------------|------------------------------------------|
+| `.github/workflows/sca-snyk.yml` | CI pipeline with Snyk + SBOM integration |
+| `snyk-report.json`               | JSON vulnerability report                |
+| `snyk-report.html`               | HTML vulnerability summary               |
+| `sbom.json`                      | CycloneDX JSON SBOM report               |
+| `README.md`                      | Instructions and explanation             |
