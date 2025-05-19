@@ -1,4 +1,4 @@
-name: SCA with Snyk for nodejs-goof
+name: SCA with Snyk, Syft & Grype for nodejs-goof
 
 on:
   push:
@@ -42,12 +42,18 @@ jobs:
 
           echo "Report files:"
           ls -lh snyk-report.*
-          
+
           if [ -s snyk-report.html ]; then
             echo "✅ HTML report generated"
           else
             echo "❌ HTML report was not generated correctly"
           fi
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+      - name: Monitor Project on Snyk Dashboard
+        run: snyk monitor
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
@@ -59,3 +65,20 @@ jobs:
           path: |
             snyk-report.json
             snyk-report.html
+
+      - name: Install Syft & Grype
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Generate SBOM with Syft
+        run: syft dir:. -o cyclonedx-json > sbom.json
+
+      - name: Scan SBOM using Grype
+        run: grype sbom:sbom.json -o table
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
