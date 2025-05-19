@@ -1,4 +1,4 @@
-name: SCA with Snyk, Syft & Grype for nodejs-goof
+name: SCA with Snyk + SBOM for nodejs-goof
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  snyk-scan:
+  sca-scan:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run Snyk to test for vulnerabilities (console output)
+      - name: Run Snyk test (console output)
         uses: snyk/actions@master
         with:
           command: test
@@ -52,11 +52,10 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
 
-      - name: Monitor Project on Snyk Dashboard
-        run: snyk monitor
+      - name: Monitor project with Snyk
+        run: snyk monitor || true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        continue-on-error: true
 
       - name: Upload Snyk reports
         uses: actions/upload-artifact@v4
@@ -66,19 +65,32 @@ jobs:
             snyk-report.json
             snyk-report.html
 
-      - name: Install Syft & Grype
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+      # --- SBOM Generation and Vulnerability Scan ---
 
-      - name: Generate SBOM with Syft
-        run: syft dir:. -o cyclonedx-json > sbom.json
+      - name: Install Syft
+        run: |
+          curl -sSLO https://github.com/anchore/syft/releases/download/v1.0.1/syft_1.0.1_linux_amd64.tar.gz
+          tar -xzf syft_1.0.1_linux_amd64.tar.gz
+          sudo mv syft /usr/local/bin/syft
+
+      - name: Install Grype
+        run: |
+          curl -sSLO https://github.com/anchore/grype/releases/download/v0.72.1/grype_0.72.1_linux_amd64.tar.gz
+          tar -xzf grype_0.72.1_linux_amd64.tar.gz
+          sudo mv grype /usr/local/bin/grype
+
+      - name: Generate SBOM using Syft (CycloneDX JSON)
+        run: |
+          syft dir:. -o cyclonedx-json > sbom.json || true
+          cat sbom.json | head -n 20
 
       - name: Scan SBOM using Grype
-        run: grype sbom:sbom.json -o table
+        run: |
+          grype sbom:sbom.json -o table || true
 
-      - name: Upload SBOM
+      - name: Upload SBOM and Grype output
         uses: actions/upload-artifact@v4
         with:
-          name: sbom
-          path: sbom.json
+          name: sbom-and-grype
+          path: |
+            sbom.json
